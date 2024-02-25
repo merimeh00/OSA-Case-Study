@@ -1,9 +1,12 @@
-# OSA-Case-Study
-In the next repository, it is presented the code for analysing the data and different classification techniques for detecting the disease: Obstructive Sleep Apnea (OSA). This is a project for ETSTI, UPM. 
+# OSA-Case-Study-Repository
+This repository contains code for analyzing data and implementing different classification techniques to detect Obstructive Sleep Apnea (OSA). The project is developed for ETSIT, UPM.
 
-# R Code
-In the R folder, is the code for the Data Preparation and the Exploratory Data Analysis. 
+## Exploratory Data Analysis (EDA)
+In the "EDA" folder, you'll find R code for data preparation and exploratory data analysis.
 
-# Python Code
-In the Python folder, there is the code for the machine learning models employed for both linear regression of the data to predict the AHI value of a patient and the classification for infering the severity of the disease. 
+## Machine Learning Models
+The "Models" folder contains code for various machine learning models used in this project:
+
+- Linear Regression: Predicts the Apnea-Hypopnea Index (AHI) value of a patient.
+- Classification Models: Utilized for inferring the severity of the disease. Additionally, classification code is provided for distinguishing diseases into respiratory or non-respiratory categories using GPT-2 and BERT.
 
