@@ -1,0 +1,674 @@
+---
+title: "ETL_OSA"
+author: "MariaVilla and Miguel Reino"
+date: "2023-10-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## OSA CASE STUDY
+
+In this code we are going to prepare, clean and make feature engineering of the data provided by Hospital Quirón de Málaga:
+
+## Data Loading
+
+We start by clearing the current working environment. Next, we specify the input and output file names, as well as the data directory path
+
+```{r}
+rm(list=ls())
+
+Input_file <- "Info_BDApnea_QuironMalaga.xlsx"
+Output_file <- "OSA_DB_UPM.xlsx"
+Data_Directory <- "C:\\Users\\Usuario\\universidad\\MUIT\\2º\\MLLB\\OSA CASE STUDY\\R\\DATA\\"
+```
+
+We proceed to load the provided Excel file, named 'InfoBDApneaQuirónMalaga.xlsx,' from the designated data directory.
+
+```{r}
+library(readxl)
+
+df_tmp <- read_excel(paste(Data_Directory, Input_file, sep = ""))
+
+```
+
+## Data Type Conversion
+
+Ensuring the type of the data set we are managing is crucial. We change the dataset from tible to data frame.
+
+```{r}
+typeof(df_tmp)
+is.data.frame(df_tmp)
+class(df_tmp)
+df_tmp = as.data.frame(df_tmp) # We change the type of tible into a dataframe
+class(df_tmp)
+
+```
+
+## Data Selection and Formatting
+
+We select specific columns that are integral to our analysis, such as "Patient," "Gender," "IAH," "Weight," "Height," "Age," "Cervical," "Smoker," "Snorer," and "Illnesses." These columns are subsequently standardized into English for consistency and ease of use.
+
+```{r}
+library(dplyr)
+
+df_tmp1 <- select(df_tmp, Patient, Gender, IAH, Peso, Talla, Edad, PerCervical, Fumador, Roncador, Enfermedades)
+library(visdat)
+vis_dat(df_tmp)
+
+## We standarized the names of the columns by changing them from spanish to english
+df_tmp1 <- df_tmp1 %>% rename(Weight = Peso,
+                                Height = Talla,
+                                Age = Edad,
+                                Cervical = PerCervical,
+                                Smoker = Fumador,
+                                Snorer = Roncador,
+                                Illnesses = Enfermedades) 
+
+vis_dat(df_tmp1)
+```
+
+## Handling Missing Values and Data Cleaning
+
+We use the 'visdat' library to visualize the dataset and the presence of character (chr), numeric (num), and missing (NA) values. The we use the 'naniar' library to change all occurrences of -1 to NA in all columns. We then convert the "Weight" column to numeric data type as it has the wrong type of data asigned.
+
+```{r}
+## We notice that there are problems with chr, num and NA 
+library(naniar)
+# Now change -1 values for NA in all columns (i.e. variables)
+df_tmp2 <- df_tmp1
+df_tmp2 <- replace_with_na_all(df_tmp1,condition = ~.x == -1)
+df_tmp2$Weight <- as.numeric(df_tmp2$Weight)
+vis_dat(df_tmp2)
+```
+
+Finally, we drop the rows containing any missing (NA) values using the 'dropna' function from the 'tidyr' library.
+
+```{r}
+library(tidyr)
+
+df_final <- df_tmp2 %>% drop_na()
+vis_dat(df_final)
+```
+
+## Data Analysis
+
+Data analysis is conducted to determine the number of patients and the gender distribution. This analysis involves creating two subsets, one for male and one for female patients.
+
+```{r}
+## First we tanslate the values of gender from spanish to english
+df_final$Gender <- ifelse(df_final$Gender == 'hombre', 'male',
+                    ifelse(df_final$Gender == 'mujer', 'female', df_final$Gender))
+
+## Create two subsets differentiating from gender
+df_men <- subset(df_final, Gender == "male")
+df_women <- subset(df_final, Gender =="female")
+
+#To see the values from different attributes
+summary(df_men)
+summary(df_women)
+
+```
+
+#### Smoker
+
+Additionally, the 'Smoker' and 'Snorer' columns are carefully examined to make an informed decision regarding their inclusion as attributes in the case study.
+
+```{r}
+## First we are going to translate all this possible values of this attribute to english
+df_final$Smoker <- ifelse(df_final$Smoker == 'si', 'yes',
+                    ifelse(df_final$Smoker == 'no', 'no',
+                           ifelse(df_final$Smoker == 'antiguo', 'former',
+                                  ifelse(df_final$Smoker == 'poco', 'occasionally',
+                                         ifelse(df_final$Smoker == 'si (poco)', 'yes occasionally', df_final$Smoker)))))
+df_smoker <- table(df_final$Smoker)
+print(df_smoker)
+
+## Now we are going to reorganize the possible values
+
+df_final$Smoker <- ifelse(df_final$Smoker %in% c('occasionally','yes', 'yes occasionally'), 'yes',
+                    ifelse(df_final$Smoker == 'no', 'no',
+                           ifelse(df_final$Smoker == 'former', 'former',
+                                  ifelse(df_final$Smoker == 'ns', 'unknown', df_final$Smoker))))
+
+#We omit the 'unknown values'
+df_final <- df_final[df_final$Smoker != 'unknown', ]
+df_smoker <- table(df_final$Smoker)
+print(df_smoker)
+```
+
+Lets see it graphically
+
+```{r}
+library(ggplot2)
+ggplot(df_final, aes(x = Smoker)) +
+  geom_bar(fill = "blue") +
+  labs(title = "Distribution of the Smoker values", x = "Smoker Categories", y = "Count")
+```
+
+#### Snorer
+
+Lets do the same for 'Snorer'
+
+```{r}
+########SNORER#######
+df_final$Snorer <- ifelse(df_final$Snorer == 'si', 'yes',
+                    ifelse(df_final$Snorer == 'no', 'no',
+                      ifelse(df_final$Snorer == 'poco', 'occasionally',
+                        ifelse(df_final$Snorer == 'no con CPAD', 'no with CPAD',
+                          ifelse(df_final$Snorer == 'si´(protesis boca para dormir)', 'yes with prosthesis',
+                            ifelse(df_final$Snorer == 'CPAP', 'CPAP',
+                              ifelse(df_final$Snorer == 'si sin CPAP', 'yes with CPAP',
+                                ifelse(df_final$Snorer == 'ns', 'ns', df_final$Snorer))))))))
+                                                      
+                                               
+                                                  
+df_snorer <- table(df_final$Snorer)
+print(df_snorer)
+```
+
+As snorer is not giving us valuable information, we are going to delete the 'Snorer' column.
+
+```{r}
+df_final$Snorer <- NULL
+```
+
+## FEATURE ENGINEERING
+
+## BMI
+
+We introduce a new attribute, the Body Mass Index (BMI), which plays a crucial role in the process of OSA prediction for several compelling reasons.
+
+```{r}
+df_final$BMI <- df_final$Weight / ((df_final$Height/100) ^ 2)
+
+df_final$BMI <- round(df_final$BMI, 2)
+
+## We filter everything by gender
+df_men <- subset(df_final, Gender == "male")
+df_women <- subset(df_final, Gender =="female")
+
+#To see the values from different attributes
+summary(df_men)
+summary(df_women)
+summary(df_final)
+```
+
+## OSA
+
+Finally, we introduce a new attribute called OSA to identify severe cases. OSA uses the Apnea-Hypopnea Index (IAH) to assess the severity of the condition. IAH measures the number of times a patient stops breathing per hour. The classification is as follows, note that for our study case we have to include the 'Intermediate' category as there are patients that have intermediate values.
+
+```{r}
+df_final$OSA <- ifelse(df_final$IAH <= 10, "Healthy",
+                   ifelse(df_final$IAH >= 30, "Severe", "Intermediate"))
+
+## Counting types of OSA patients by gender
+osa_counts <- table(df_final$OSA)
+print(osa_counts)
+
+df_men <- subset(df_final, Gender == "male")
+df_women <- subset(df_final, Gender =="female")
+
+osa_male_counts <- table(df_men$OSA)
+osa_female_counts <- table(df_women$OSA)
+print(osa_male_counts)
+print(osa_female_counts)
+```
+
+Lets see it graphically
+
+```{r}
+ggplot(df_final, aes(x = OSA)) +
+  geom_bar(fill = "blue") +
+  labs(title = "Distribution of the OSA values", x = "OSA Categories", y = "Count")
+```
+
+## DATA QUALITY ASSESMENT
+
+### Numeric Data
+
+HACER LA CORRELACION. CORRELACION DE PEARSON.
+
+We are going to evaluate if the numerical features follow a normal distribution. In order to do it we are going to analyze the data with the **Kolgomorov-Smirnov** test.
+
+```{r}
+features <- c("Weight", "IAH", "Height", "Age", "Cervical", "BMI")
+p_values <- numeric(length(features))
+
+for (i in seq_along(features)) {
+  result <- ks.test(df_final[[features[i]]], "pnorm")
+  p_values[i] <- result$p.value
+  print(p_values[i])
+}
+
+KS_results <- data.frame(Feature = features, P_Value = p_values)
+
+print(KS_results)
+
+```
+
+As we have repeated values for most of the features we have to change the test in order to know if the features follow the normal distribution. This test is **Shapiro Test**.
+
+```{r}
+features <- c("Weight", "IAH", "Height", "Age", "Cervical", "BMI")
+p_values <- numeric(length(features))
+
+for (i in seq_along(features)) {
+  result <- shapiro.test(df_final[[features[i]]])
+  p_values[i] <- result$p.value
+  print(p_values[i])
+}
+
+shapiro_results <- data.frame(Feature = features, P_Value = p_values)
+
+print(shapiro_results)
+```
+
+Lets see this values in graphic form.
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+# Definir los atributos
+features <- c("Weight", "IAH", "Height", "Age", "Cervical", "BMI")
+
+# Convertir el DataFrame a un formato largo (long format)
+df_long <- gather(df_final, key = "variable", value = "value", all_of(features))
+
+# Crear un gráfico de densidad superpuesto
+density_plot <- ggplot(df_long, aes(x = value, fill = variable)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "Value", y = "Density") +
+  theme_minimal()
+```
+
+```{r}
+print(density_plot)
+```
+
+### Categorical Data Analysis
+
+### Qualitative Data
+
+As for the numerical data analysis we are going to analyze the categorical data (OSA, Smoker, Gender). In order to achieve this we are going to use the **Chi-Squared Test.**
+
+#### OSA vs Smoker
+
+We first analyze the relation between the OSA and the Smoker attributes.
+
+```{r}
+library(stats)
+
+# Crear una tabla de contingencia entre las variables "OSA" y "Smoker"
+contingency_table <- table(df_final$OSA, df_final$Smoker)
+
+# Aplicar el test de chi-cuadrado
+chi_square_test <- chisq.test(contingency_table)
+
+# Mostrar los resultados del test
+print(chi_square_test)
+```
+
+As we obtain a p_value \> 0.05 we can conclude that there is no relationship between the attribute 'Smoker' and the OSA category.
+
+```{r}
+library(ggplot2)
+# Crear el gráfico de barras apiladas
+stacked_bar_plot <- ggplot(df_final, aes(x = OSA, fill = Smoker)) +
+  geom_bar(position = "stack") +
+  labs(title = "Relationship between OSA and Smoker", x = "OSA", y = "Counting") +
+  theme_minimal()
+
+# Mostrar el gráfico
+print(stacked_bar_plot)
+```
+
+#### OSA vs Gender
+
+Now we do the same in order to analyze the relationship between the OSA and the gender.
+
+```{r}
+library(stats)
+
+# Crear una tabla de contingencia entre las variables "OSA" y "Smoker"
+contingency_table <- table(df_final$OSA, df_final$Gender)
+
+# Aplicar el test de chi-cuadrado
+chi_square_test <- chisq.test(contingency_table)
+
+# Mostrar los resultados del test
+print(chi_square_test)
+
+```
+
+We obtain a very low p-value, we can conclude that the Gender and the OSA attribute are very strongly related.
+
+```{r}
+library(ggplot2)
+# Crear el gráfico de barras apiladas
+stacked_bar_plot <- ggplot(df_final, aes(x = OSA, fill = Gender)) +
+  geom_bar(position = "stack") +
+  labs(title = "Relationship between OSA and Gender", x = "OSA", y = "Counting") +
+  theme_minimal()
+
+# Mostrar el gráfico
+print(stacked_bar_plot)
+```
+
+Now we are going to classify all of the attributes analyzed in the previous section regarding their relationship with the 'OSA' attribute.
+
+### EDA for Regression
+
+Bipolar correlation y correlación de pearson. (Correlacion de spearman porque pearson solo vale si los features siguen una distribución normal)
+
+```{r}
+# For the regression we are going to ignore (at least by now) "Enfermedades"
+df_final_regression <- select(df_final, Patient, Gender, IAH, Weight, Height, Age, Cervical, Smoker, BMI)
+#EDA:
+summary(df_final_regression)
+hist(df_final_regression$IAH, main="Histogram of AHI")
+logAHI <-log(df_final_regression$IAH + 1)
+hist(logAHI)
+# We define gender as a factor and the numeric as we want to see its correlation with AHI
+df_final_regression$Gender <- factor(df_final_regression$Gender)
+df_final_regression$Gender <- as.numeric(df_final_regression$Gender)
+# We set as numeric both Snorer and Smoker
+df_final_regression$Smoker <- ifelse(df_final_regression$Smoker == "no", 0, ifelse(df_final_regression$Smoker == "yes", 1, 2))
+df_final_regression$Smoker <- as.numeric(df_final_regression$Smoker)
+# df_final_regression$Snorer <- ifelse(df_final_regression$Snorer == "no", 0, ifelse(df_final_regression$Snorer == "yes", 1, 2))
+# Correlation matrix:
+# correlation_matrix <- cor(df_final_regression[, c("IAH", "Weight", "Height", "Age", "Cervical", "BMI")])
+correlation_matrix <- cor(df_final_regression[, c("IAH", "Weight", "Height", "Age", "Cervical", "BMI", "Gender", "Smoker")])
+library(corrplot)
+corrplot(correlation_matrix, method = "number")
+```
+
+### EDA for Classification
+
+#### Binary Classification. Categorical Analysis
+
+As all the features do not follow the normal distribution (P-value \< 0.05) we proceed to do the **Mann Whitney U Test.** We are going to test the relevance of the OSA vs the other atributes. We are only going to take into account the "Age", the "Cervical" and the "BMI". (Because Weight and Height are strongly related to the BMI).
+
+First we will agrupar de OSA values in two instead of three (Low and Severe)
+
+```{r}
+df_bin_classification <- select(df_final, Patient, Gender, IAH, Weight, Height, Age, Cervical, Smoker, BMI, OSA)
+df_bin_classification$OSA <- ifelse(df_bin_classification$IAH <= 30, "Healthy", "Severe")
+```
+
+We proceed to do the Mann Whitney U Test.
+
+```{r}
+library(ggplot2)
+
+# Mann-Whitney for Age
+result_age <- wilcox.test(Age ~ OSA, data = df_bin_classification)
+
+# Mann-Whitney for BMI
+result_bmi <- wilcox.test(BMI ~ OSA, data = df_bin_classification)
+
+# Mann-Whitney for Cervical
+result_cervical <- wilcox.test(Cervical ~ OSA, data = df_bin_classification)
+
+# Print the results
+print("Mann-Whitney Test for Age:")
+print(result_age)
+
+print("Mann-Whitney Test for BMI:")
+print(result_bmi)
+
+print("Mann-Whitney Test for Cervical:")
+print(result_cervical)
+```
+
+Lets draw this results
+
+```{r}
+plotAge <- ggplot(df_bin_classification, aes(x=Age)) +
+  geom_histogram(aes(color=OSA), fill="white", position = "identity", bins = 30, alpha = 0.1) +
+  scale_color_manual(values = c("#00AF00",  "#AF0000")) +
+  scale_fill_manual(values = c("#00AF00",  "#AF0000"))
+print(plotAge)
+
+plotBMI <- ggplot(df_bin_classification, aes(x=BMI)) +
+  geom_histogram(aes(color=OSA), fill="white", position = "identity", bins = 30, alpha = 0.1) +
+  scale_color_manual(values = c("#00AF00",  "#AF0000")) +
+  scale_fill_manual(values = c("#00AF00",  "#AF0000"))
+print(plotBMI)
+
+plotCervical <- ggplot(df_bin_classification, aes(x=Cervical)) +
+  geom_histogram(aes(color=OSA), fill="white", position = "identity", bins = 30, alpha = 0.1) +
+  scale_color_manual(values = c("#00AF00",  "#AF0000")) +
+  scale_fill_manual(values = c("#00AF00",  "#AF0000"))
+print(plotCervical)
+```
+
+#### Binary Classification. Numerical Analysis
+
+We are going to compare the IAH feature with the Age, Cervical and BMI features. In order to do this wee ned to aply the Krusskal Wallis.
+
+```{r}
+library(ggpubr)
+# Prueba de Kruskal-Wallis para BMI
+kruskal.test(BMI ~ IAH, data = df_bin_classification)
+# Prueba de Kruskal-Wallis para Cervical
+kruskal.test(Cervical ~ IAH, data = df_bin_classification)
+# Prueba de Kruskal-Wallis para Age
+kruskal.test(Age ~ IAH, data = df_bin_classification)
+
+```
+
+Lets draw the results.
+
+```{r}
+library(ggplot2)
+
+plotBMI_AHI <- ggplot(df_final, aes(x = BMI, y = IAH, color = IAH)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Dispersion of BMI vs AHI", x = "BMI", y = "AHI") +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal()
+print(plotBMI_AHI)
+
+plotCervical_AHI <- ggplot(df_final, aes(x = Cervical, y = IAH, color = IAH)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Dispersion of Cervical vs AHI", x = "Cervical", y = "AHI") +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal()
+print(plotCervical_AHI)
+
+plotAge_AHI <- ggplot(df_final, aes(x = BMI, y = IAH, color = IAH)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "Dispersion of Age vs AHI", x = "Age", y = "AHI") +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal()
+print(plotAge_AHI)
+```
+
+#### Multiclass Classification
+
+In this section we are going to evaluate the relation of the features with the different possible degrees of the OSA illness.
+
+```{r}
+library(ggplot2)
+
+plotBMI_OSA_multi <- ggplot(df_final, aes(x = BMI)) +
+  geom_histogram(aes(color = OSA), fill = "white",
+           position = "identity", bins = 30, alpha = 0.1) + 
+  scale_color_manual(values = c("#00AF00", "#E7B800", "#FF5733")) + 
+  scale_fill_manual(values = c("#00AF00", "#E7B800", "#FF5733"))
+print(plotBMI_OSA_multi)
+
+plotAge_OSA_multi <- ggplot(df_final, aes(x = Age)) +
+  geom_histogram(aes(color = OSA), fill = "white",
+           position = "identity", bins = 30, alpha = 0.1) + 
+  scale_color_manual(values = c("#00AF00", "#E7B800", "#FF5733")) + 
+  scale_fill_manual(values = c("#00AF00", "#E7B800", "#FF5733"))
+print(plotAge_OSA_multi)
+
+plotCervical_OSA_multi <- ggplot(df_final, aes(x = Cervical)) +
+  geom_histogram(aes(color = OSA), fill = "white",
+           position = "identity", bins = 30, alpha = 0.1) + 
+  scale_color_manual(values = c("#00AF00", "#E7B800", "#FF5733")) + 
+  scale_fill_manual(values = c("#00AF00", "#E7B800", "#FF5733"))
+print(plotCervical_OSA_multi)
+```
+
+### EDA for Clustering
+
+For this section we are going to use the excel that depicts extreme cases.
+
+```{r}
+Input_file <- "OSA_extreme_male.xlsx"
+Output_file <- "OSA_DB_UPM_EXTREME.xlsx"
+Data_Directory <- "C:\\Users\\Usuario\\universidad\\MUIT\\2º\\MLLB\\OSA CASE STUDY\\R\\DATA\\"
+```
+
+```{r}
+library(readxl)
+
+df_extreme<- read_excel(paste(Data_Directory, Input_file, sep = ""))
+```
+
+We first create a dataframe containing the features we want to cluster and we are also going to normalize the features in order to apply the euclidean distance.
+
+scale() estandariza cada columna restando la media y dividiendo por la desviación estándar.
+
+```{r}
+df_cluster <- select(df_extreme, IAH, Age, Cervical, BMI)
+df_cluster_scaled <- as.data.frame(scale(df_cluster))
+```
+
+We use el gráfico del codo para ver cuantos clusters podemos hacer.
+
+```{r}
+# Inicializar una lista para almacenar los valores de WCSS
+wcss <- numeric(length = 10)
+
+# Calcular WCSS para diferentes números de clusters
+for (i in 1:10) {
+  kmeans_model <- kmeans(df_cluster_scaled, centers = i)
+  wcss[i] <- sum(kmeans_model$withinss)
+}
+
+# Graficar el método del codo
+plot(1:10, wcss, type = 'b', main = 'Elbow Method', xlab = 'Number of Clusters', ylab = 'WCSS')
+
+```
+
+Observamos que con 5 clusters es un número óptimo para realizar el K-Means algorithm.
+
+```{r}
+# Especificar el número de clusters
+num_clusters <- 5
+
+# Inicializar el modelo de kmeans
+kmeans_model <- kmeans(df_cluster_scaled, centers = num_clusters)
+
+# Obtener las asignaciones de clusters para cada observación
+cluster_assignments <- kmeans_model$cluster
+
+```
+
+We will analyse the centers of the clusters.
+
+```{r}
+cluster_centers <- kmeans_model$centers
+df_cluster_centers <- as.data.frame(cluster_centers)
+print(df_cluster_centers)
+```
+
+First we need to unscale the feature values
+
+```{r}
+m_IAH <- mean(df_cluster$IAH)
+sd_IAH <- sd(df_cluster$IAH)
+IAH_unscaled <- (df_cluster_centers$IAH * sd_IAH) + m_IAH 
+
+m_Age <- mean(df_cluster$Age)
+sd_Age <- sd(df_cluster$Age)
+Age_unscaled <- (df_cluster_centers$Age * sd_Age) + m_Age 
+
+m_Cervical <- mean(df_cluster$Cervical)
+sd_Cervical <- sd(df_cluster$Cervical)
+Cervical_unscaled <- (df_cluster_centers$Cervical * sd_Cervical) + m_Cervical 
+
+m_BMI <- mean(df_cluster$BMI)
+sd_BMI <- sd(df_cluster$BMI)
+BMI_unscaled <- (df_cluster_centers$BMI * sd_BMI) + m_BMI 
+
+df_centers_unscaled <- data.frame(IAH = IAH_unscaled, Age = Age_unscaled, Cervical = Cervical_unscaled, BMI = BMI_unscaled)
+
+print(df_centers_unscaled)
+
+```
+
+Cluster1 is Healthy, Middle Age-Old, Not Obese.
+
+Cluster2 is Severe, Middle Age, Obese
+
+Cluster3 is Severe, Middle Age, Obese
+
+Cluster4 is Healthy, Young-Middle Age, Not Obese
+
+Cluster5 is Severe, Old, Obese
+
+Lets draw the results
+
+```{r}
+library(ggplot2)
+
+# Crear un data frame con las asignaciones de clusters y las características originales
+df_plot <- data.frame(Age = df_cluster$Age, BMI = df_cluster$BMI, Cervical = df_cluster$Cervical, IAH = df_cluster$IAH, Cluster = as.factor(cluster_assignments))
+
+# Graficar los clusters
+plot_BMIvsAge <- ggplot(df_plot, aes(x = Age, y = BMI, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = 'Clusters of Patients using K-Means Clustering',
+       x = 'Age', y = 'BMI') +
+  scale_color_manual(values = c('red', 'blue', 'green', 'cyan', 'magenta', 'black')) +
+  theme_minimal()
+print(plot_BMIvsAge)
+
+plot_IAHvsAge <- ggplot(df_plot, aes(x = Age, y = IAH, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = 'Clusters of Patients using K-Means Clustering',
+       x = 'Age', y = 'AHI') +
+  scale_color_manual(values = c('red', 'blue', 'green', 'cyan', 'magenta', 'black')) +
+  theme_minimal()
+print(plot_IAHvsAge)
+
+plot_IAHvsBMI <- ggplot(df_plot, aes(x = BMI, y = IAH, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = 'Clusters of Patients using K-Means Clustering',
+       x = 'BMI', y = 'AHI') +
+  scale_color_manual(values = c('red', 'blue', 'green', 'cyan', 'magenta', 'black')) +
+  theme_minimal()
+print(plot_IAHvsBMI)
+
+plot_IAHvsCervical <- ggplot(df_plot, aes(x = Cervical, y = IAH, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = 'Clusters of Patients using K-Means Clustering',
+       x = 'Cervical', y = 'AHI') +
+  scale_color_manual(values = c('red', 'blue', 'green', 'cyan', 'magenta', 'black')) +
+  theme_minimal()
+print(plot_IAHvsCervical)
+
+```
+
+## SAVING CLEAN DATA
+
+```{r}
+# Write the clean data into Output_file
+# you can install writexl package
+file = "C:\\Users\\Usuario\\universidad\\MUIT\\2º\\MLLB\\OSA CASE STUDY\\R\\DATA\\df_final.csv"
+write.csv(df_final, file = file, row.names = FALSE)
+
+library(writexl)
+
+write_xlsx(df_final,
+           paste(Data_Directory, Output_file, sep = ""))
+```
